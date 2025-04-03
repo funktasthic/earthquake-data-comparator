@@ -1,0 +1,17 @@
+{
+  "name": "earthquake-data-comparator",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "node --trace-warnings --watch index.js"
+  },
+  "keywords": [],
+  "author": "funktasthic",
+  "license": "ISC",
+  "type": "module",
+  "description": "",
+  "dependencies": {
+    "puppeteer": "^24.5.0",
+    "xlsx": "^0.18.5"
+  }
+}
