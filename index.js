@@ -15,6 +15,9 @@ async function scrapeData() {
         // Navigate to the page and extract data
         await page.goto("https://www.globalcmt.org/cgi-bin/globalcmt-cgi-bin/CMT5/form?itype=ymd&yr=1976&mo=1&day=1&otype=ymd&oyr=2024&omo=1&oday=1&jyr=1976&jday=1&ojyr=1976&ojday=1&nday=1&lmw=0&umw=10&lms=0&ums=10&lmb=0&umb=10&llat=-25&ulat=-21&llon=-74&ulon=-67&lhd=0&uhd=1000&lts=-9999&uts=9999&lpe1=0&upe1=90&lpe2=0&upe2=90&list=0");
 
+        // Take a full screenshot
+        await page.screenshot({ path: 'screenshot.png', fullPage: true });
+
         // Extract raw data from the page
         const rawData = await page.evaluate(() => {
             const preElements = Array.from(document.querySelectorAll("pre"));
@@ -89,3 +92,5 @@ async function main() {
 }
 
 main();
+
+
