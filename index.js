@@ -7,77 +7,105 @@ async function launchBrowser() {
 }
 
 async function scrapeData() {
-    // Scrape and process the earthquake data from GLOBALCMT
+    // Open the browser and set the page to navigate to
     const browser = await launchBrowser();
     const page = await browser.newPage();
+    // Stores data in an earthquake array
+    const allEarthquakeData = [];
 
     try {
-        // Navigate to the page and extract data
+        // Navigate to the GLOBALCMT page
         await page.goto("https://www.globalcmt.org/cgi-bin/globalcmt-cgi-bin/CMT5/form?itype=ymd&yr=1976&mo=1&day=1&otype=ymd&oyr=2024&omo=1&oday=1&jyr=1976&jday=1&ojyr=1976&ojday=1&nday=1&lmw=0&umw=10&lms=0&ums=10&lmb=0&umb=10&llat=-25&ulat=-21&llon=-74&ulon=-67&lhd=0&uhd=1000&lts=-9999&uts=9999&lpe1=0&upe1=90&lpe2=0&upe2=90&list=0");
 
-        // Take a full screenshot
-        await page.screenshot({ path: 'screenshot.png', fullPage: true });
+        // Initialize page number and the 'has more pages' flag
+        let pageNumber = 1;
+        let hasMorePages = true;
 
-        // Extract raw data from the page
-        const rawData = await page.evaluate(() => {
-            const preElements = Array.from(document.querySelectorAll("pre"));
-            return [preElements[1]?.innerText || "", preElements[6]?.innerText || ""];
-        });
+        console.log("Starting data extraction...");
 
-        // Process data
-        const data = rawData
-            .map(entry => {
-                if (!entry) return null;
-                const lines = entry.split("\n").map(line => line.trim());
+        // Loop through pages while there are more pages to scrape
+        while (hasMorePages) {
+            console.log(`Processing page ${pageNumber}...`);
 
-                // Extract date and time
-                const dateMatch = lines[0].match(/Date:\s(\d{4})\/\s*(\d{1,2})\/(\d{1,2})/);
-                const [year, month, day] = dateMatch ? dateMatch.slice(1).map(Number) : [0, 0, 0];
+            // Wait for the pre tag and extract data from the page
+            await page.waitForSelector("pre");
+            const pageData = await extractPageData(page);
+            // Process the data and add to the allEarthquakeData array
+            allEarthquakeData.push(...pageData);
 
-                // Extract time
-                const timeMatch = lines[0].match(/Centroid Time:\s([\d:.]+)\sGMT/);
-                const [hour, minutes, seconds] = timeMatch ? timeMatch[1].split(":").map(Number) : [0, 0, 0];
+            console.log(`Page: ${pageNumber}: ${pageData.length} records extracted. Total records: ${allEarthquakeData.length}`);
 
-                // Extract earthquake details
-                const latitude = parseFloat((lines[1].match(/Lat=\s*(-?\d+\.\d+)/) || [])[1] || 0);
-                const longitude = parseFloat((lines[1].match(/Lon=\s*(-?\d+\.\d+)/) || [])[1] || 0);
-                const depth = parseFloat((lines[2].match(/Depth\s*=\s*([\d.]+)/) || [])[1] || 0);
-                const mwMagnitude = parseFloat((lines[5].match(/Mw\s=\s(\d+\.\d+)/) || [])[1] || 0);
-                const mbMagnitude = parseFloat((lines[5].match(/mb\s=\s(\d+\.\d+)/) || [])[1] || 0);
+            // Try navigating to the next page by clicking the 'More solutions' link
+            try {
+                const nextPageClicked = await page.evaluate(() => {
+                    const links = Array.from(document.querySelectorAll("a"));
+                    const moreSolutionsLink = links.find(link => 
+                        link.textContent.includes("More solutions")
+                    );
+                    if (moreSolutionsLink) {
+                        // Click the link to go to the next page
+                        moreSolutionsLink.click();
+                        return true;
+                    }
+                    return false;
+                });
 
-                return { year, month, day, hour, minutes, seconds, latitude, longitude, depth, mwMagnitude, mbMagnitude };
-            })
-            .filter(Boolean);
+                if (nextPageClicked) {
+                    // Wait for the page to load and increment the page number
+                    await page.waitForNavigation({ waitUntil: "networkidle0", timeout: 10000 });
+                    pageNumber++;
+                } else {
+                    // No more pages to navigate to
+                    hasMorePages = false;
+                }
+            } catch (error) {
+                console.log("Error navigating: ", error.message);
+                hasMorePages = false;
+            }
+        }
 
-        // Print raw and processed data
-        console.log("Raw data: ", rawData);
-        console.log("Scraped data: ", data);
-        return data;
+        console.log(`Data extraction completed. Total records: ${allEarthquakeData.length}`);
+        return allEarthquakeData;
 
     } finally {
+        // Close the browser after extraction
         await browser.close();
+        console.log("Browser closed.");
     }
 }
 
-function generateExcelFile(data) {
-    // Generate Excel file from the data
+async function extractPageData(page) {
+    // Extract amd proccess data from the actual page
+    const rawData = await page.evaluate(() => {
+        const preElements = Array.from(document.querySelectorAll("pre"));
+        return preElements.slice(1).map(pre => pre.innerText.trim());
+    });
+
+    return rawData.map(entry => {
+        const lines = entry.split("\n").map(line => line.trim());
+        const dateMatch = lines[0]?.match(/Date:\s*(\d{4})\s*\/\s*(\d{1,2})\s*\/\s*(\d{1,2})/);
+        const [year, month, day] = dateMatch ? dateMatch.slice(1).map(Number) : [null, null, null];
+
+        const timeNumbers = lines[0]?.match(/\d+(\.\d+)?/g);
+        const [hour, minutes, seconds] = timeNumbers ? timeNumbers.slice(0, 3).map(Number) : [null, null, null];
+
+        const latitude = parseFloat((lines[1]?.match(/Lat=\s*(-?\d+\.\d+)/) || [])[1] || "0");
+        const longitude = parseFloat((lines[1]?.match(/Lon=\s*(-?\d+\.\d+)/) || [])[1] || "0");
+        const depth = parseFloat((lines[2]?.match(/Depth\s*=\s*([\d.]+)/) || [])[1] || "0");
+        const mwMagnitude = parseFloat((lines[5]?.match(/Mw\s=\s(\d+\.\d+)/) || [])[1] || "0");
+
+        return { year, month, day, hour, minutes, seconds, latitude, longitude, depth, mwMagnitude };
+    });
+}
+
+function generateExcelFile(data, filename = "earthquake_data.xlsx") {
+    // Save data to an Excel file
     const wb = xlsx.utils.book_new();
-    const sheetData = data.map(({ year, month, day, hour, minutes, seconds, latitude, longitude, depth, mwMagnitude, mbMagnitude }) => ({
-        year: year.toString(), 
-        month: month.toString(), 
-        day: day.toString(), 
-        hour: hour.toString(), 
-        minutes: minutes.toString(), 
-        seconds: seconds.toString(), 
-        latitude, 
-        longitude, 
-        depth, 
-        mwMagnitude, 
-        mbMagnitude
-    }));
+    const ws = xlsx.utils.json_to_sheet(data);
     // Add data to the sheet
-    xlsx.utils.book_append_sheet(wb, xlsx.utils.json_to_sheet(sheetData), "Earthquake Data");
-    xlsx.writeFile(wb, "earthquake_data.xlsx");
+    xlsx.utils.book_append_sheet(wb, ws, "Earthquake Data");
+    xlsx.writeFile(wb, filename);
+    console.log(`File saved: ${filename}`);
 }
 
 async function main() {
@@ -92,5 +120,3 @@ async function main() {
 }
 
 main();
-
-
