@@ -75,7 +75,7 @@ async function scrapeData() {
 }
 
 async function extractPageData(page) {
-    // Extract amd proccess data from the actual page
+    // Extract and proccess data from the actual page
     const rawData = await page.evaluate(() => {
         const preElements = Array.from(document.querySelectorAll("pre"));
         return preElements.slice(1).map(pre => pre.innerText.trim());
@@ -83,11 +83,13 @@ async function extractPageData(page) {
 
     return rawData.map(entry => {
         const lines = entry.split("\n").map(line => line.trim());
+
         const dateMatch = lines[0]?.match(/Date:\s*(\d{4})\s*\/\s*(\d{1,2})\s*\/\s*(\d{1,2})/);
         const [year, month, day] = dateMatch ? dateMatch.slice(1).map(Number) : [null, null, null];
 
-        const timeNumbers = lines[0]?.match(/\d+(\.\d+)?/g);
-        const [hour, minutes, seconds] = timeNumbers ? timeNumbers.slice(0, 3).map(Number) : [null, null, null];
+        const timeMatch = lines[0]?.match(/Centroid Time:\s*(\d{1,2})\s*:\s*(\d{1,2})\s*:\s*(\d{1,2}(?:\.\d+)?)/);
+        console.log("Time match:", timeMatch);
+        const [hour, minutes, seconds] = timeMatch ? timeMatch.slice(1).map(Number) : [null, null, null];
 
         const latitude = parseFloat((lines[1]?.match(/Lat=\s*(-?\d+\.\d+)/) || [])[1] || "0");
         const longitude = parseFloat((lines[1]?.match(/Lon=\s*(-?\d+\.\d+)/) || [])[1] || "0");
@@ -97,6 +99,7 @@ async function extractPageData(page) {
         return { year, month, day, hour, minutes, seconds, latitude, longitude, depth, mwMagnitude };
     });
 }
+
 
 function generateExcelFile(data, filename = "earthquake_data.xlsx") {
     // Save data to an Excel file
